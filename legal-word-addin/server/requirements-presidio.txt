@@ -1,0 +1,7 @@
+# Prefer Python 3.10+ in a venv (Apple CLI Python 3.9 often fails building SpaCy 3.8+):
+#   python3.11 -m venv .venv && source .venv/bin/activate && npm run presidio:install
+# Swiss DE/FR/IT: npm run presidio:install also pulls de_core_news_sm, fr_core_news_sm, it_core_news_sm (optional steps).
+presidio-analyzer>=2.2.35
+presidio-anonymizer>=2.2.35
+# Cap below 3.8 so pip gets wheels on older macOS/Python; 3.8+ may build from source and fail on thinc.
+spacy>=3.4.4,<3.8.0

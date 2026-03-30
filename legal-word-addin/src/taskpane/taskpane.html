@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Legal AI Assistant</title>
+    <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  </head>
+  <body>
+    <div
+      id="progress"
+      class="progress-bar is-hidden"
+      role="progressbar"
+      aria-valuemin="0"
+      aria-valuemax="100"
+      aria-valuenow="0"
+      aria-valuetext=""
+    >
+      <div class="progress-bar__track">
+        <div id="progress-fill" class="progress-bar__fill"></div>
+      </div>
+      <div class="progress-bar__label-block">
+        <div id="progress-label" class="progress-bar__label" role="status" aria-live="polite"></div>
+        <div id="progress-timing" class="progress-bar__timing" aria-live="polite"></div>
+      </div>
+    </div>
+    <div class="app">
+      <header class="header">
+        <h1 class="title">Legal AI</h1>
+        <nav class="tabs" role="tablist">
+          <button type="button" class="tab is-active" data-view="assistant" role="tab" aria-selected="true">Tools</button>
+          <button type="button" class="tab" data-view="chat" role="tab" aria-selected="false">Chat</button>
+          <button type="button" class="tab" data-view="settings" role="tab" aria-selected="false">Settings</button>
+        </nav>
+      </header>
+
+      <main class="main">
+        <section id="view-assistant" class="view is-visible" aria-label="Assistant">
+          <p class="hint">
+            Changes are applied as <strong>tracked revisions</strong> so you can review, accept, or reject them in Word.
+          </p>
+
+          <fieldset class="action-group">
+            <legend>Anonymize</legend>
+            <p class="hint">
+              <strong>Redact</strong> replaces each hit with <code>[REDACTED]</code>. <strong>Fake</strong> uses random fictitious names, companies, and addresses. For people, the same first or last token keeps one fake (e.g. “Jane Doe”, “Doe”, “Ms. Doe” line up). Skips times, prices, and routine contract dates.
+            </p>
+            <div class="actions actions-grid-anonymize">
+              <button type="button" class="btn btn-primary" data-action="anonymize-selection-redact">Selection — Redact</button>
+              <button type="button" class="btn btn-primary" data-action="anonymize-selection-fake">Selection — Fake</button>
+              <button type="button" class="btn btn-primary" data-action="anonymize-file-redact">File — Redact</button>
+              <button type="button" class="btn btn-primary" data-action="anonymize-file-fake">File — Fake</button>
+            </div>
+          </fieldset>
+
+          <fieldset class="action-group">
+            <legend>Translate</legend>
+            <p class="hint">
+              <strong>Selection</strong> translates only what is highlighted (same BIU / tracked rules when Word exposes paragraph markup). <strong>Document</strong> uses the <strong>same range + bookmark + single insertOoxml</strong> approach as selection, but splits the body into <strong>chunks</strong> (several paragraphs per chunk) and applies chunks <strong>last→first</strong> so indices stay stable. API calls stay within about <strong>2.5k input tokens</strong> each. Progress fills the translate button. Other character formatting is not preserved.
+            </p>
+            <div class="field">
+              <label class="label" for="target-language">Target language</label>
+              <select id="target-language" class="select">
+                <option value="English">English</option>
+                <option value="French" selected>French</option>
+                <option value="German">German</option>
+                <option value="Italian">Italian</option>
+                <option value="Spanish">Spanish</option>
+                <option value="Portuguese">Portuguese</option>
+                <option value="Dutch">Dutch</option>
+                <option value="Polish">Polish</option>
+                <option value="Romanian">Romanian</option>
+                <option value="Turkish">Turkish</option>
+                <option value="Arabic">Arabic</option>
+                <option value="Chinese (Simplified)">Chinese (Simplified)</option>
+                <option value="Japanese">Japanese</option>
+                <option value="Korean">Korean</option>
+                <option value="Russian">Russian</option>
+              </select>
+            </div>
+            <div class="actions actions-grid-translate">
+              <button type="button" class="btn btn-primary btn-translate" data-action="translate-selection">
+                <span class="btn-translate__progress" aria-hidden="true"></span>
+                <span class="btn-translate__label">Translate selection</span>
+              </button>
+              <button type="button" class="btn btn-primary btn-translate" data-action="translate">
+                <span class="btn-translate__progress" aria-hidden="true"></span>
+                <span class="btn-translate__label">Translate document</span>
+              </button>
+            </div>
+          </fieldset>
+
+          <div class="status-row">
+            <div id="status" class="status" role="status" aria-live="polite"></div>
+            <button type="button" class="btn btn-secondary btn-stop" id="btn-stop" disabled>
+              Stop
+            </button>
+          </div>
+          <div class="preview-wrap">
+            <label class="label" for="preview">Last response</label>
+            <textarea id="preview" class="preview" readonly rows="10" placeholder="AI output appears here…"></textarea>
+          </div>
+        </section>
+
+        <section id="view-chat" class="view" hidden aria-label="Chat">
+          <p class="hint">
+            Just describe what you need — the AI sees both your <strong>selection</strong> and the <strong>full document</strong>,
+            and will figure out the scope and action. Changes are applied as <strong>tracked revisions</strong>.
+          </p>
+
+          <div id="chat-messages" class="chat-messages"></div>
+          <div class="chat-input-wrap">
+            <textarea id="chat-input" class="chat-input" rows="2" placeholder="Ask anything… Enter to send, Shift+Enter for new line"></textarea>
+            <div class="chat-actions">
+              <button type="button" class="btn btn-primary" id="btn-chat-send">Send</button>
+              <button type="button" class="btn btn-secondary" id="btn-chat-apply">Apply last response</button>
+              <button type="button" class="btn btn-secondary" id="btn-chat-clear">Clear</button>
+            </div>
+          </div>
+        </section>
+
+        <section id="view-settings" class="view" hidden aria-label="AI connections">
+          <p class="hint warn">
+            API keys are stored in browser storage for this origin. Proxy mode (default for local dev) uses <code>npm run dev:all</code>: the task pane calls <code>/api</code> on the webpack dev server, which forwards to the local Node proxy on port 3548 so provider APIs are not hit directly from the browser (avoids CORS). Direct mode calls the provider from Word’s webview and may be blocked by CORS.
+          </p>
+
+          <div class="field">
+            <label class="label" for="request-mode">Request mode</label>
+            <select id="request-mode" class="select">
+              <option value="proxy">Proxy (local dev: webpack + backend on 3548)</option>
+              <option value="direct">Direct from Word (no local server)</option>
+            </select>
+          </div>
+          <div class="field" id="proxy-url-field">
+            <label class="label" for="proxy-url">Backend base URL</label>
+            <input id="proxy-url" class="input" type="url" placeholder="Leave empty in dev to use same-origin /api" />
+            <span class="field-help">Local dev: leave empty. Production API: <code>https://your-api.example.com</code> with <code>POST /api/legal-ai/complete</code>.</span>
+          </div>
+
+          <div class="field">
+            <label class="label" for="pii-engine">PII detection engine (Anonymize)</label>
+            <select id="pii-engine" class="select">
+              <option value="llm">LLM (active AI provider)</option>
+              <option value="presidio">Microsoft Presidio (local Python sidecar)</option>
+            </select>
+            <span class="field-help">LLM uses your active AI provider to detect PII. Presidio runs locally via <code>npm run presidio</code> on port 3549.</span>
+          </div>
+          <div class="field" id="presidio-url-field">
+            <label class="label" for="presidio-backend-url">Presidio backend URL (direct mode only)</label>
+            <input id="presidio-backend-url" class="input" type="url" placeholder="http://localhost:3549" />
+            <span class="field-help">Leave empty in proxy mode (requests go through the Node proxy). In direct mode, point to your Presidio sidecar.</span>
+          </div>
+
+          <div class="field">
+            <label class="label" for="llm-min-interval-ms">Min. ms between LLM requests</label>
+            <input id="llm-min-interval-ms" class="input" type="number" min="0" max="120000" step="100" placeholder="Auto" />
+            <span class="field-help">
+              Leave empty for <strong>auto</strong> (e.g. <strong>2000 ms</strong> when the active custom base URL or proxy host is Infomaniak). Set <code>0</code> to disable spacing. Increase if you still hit <code>rate_limit_exceeded</code>.
+            </span>
+          </div>
+
+          <div class="field">
+            <label class="label" for="active-provider">Active provider</label>
+            <select id="active-provider" class="select">
+              <option value="openai">OpenAI</option>
+              <option value="anthropic">Anthropic</option>
+              <option value="azureOpenai">Azure OpenAI</option>
+              <option value="customOpenAI">Custom (OpenAI-compatible)</option>
+            </select>
+          </div>
+
+          <fieldset class="provider-box" id="openai-fieldset">
+            <legend>OpenAI</legend>
+            <div class="field field-check">
+              <label class="check-label">
+                <input id="openai-enabled" type="checkbox" checked />
+                <span>Allow OpenAI</span>
+              </label>
+              <span class="field-help">When off, the add-in will not call the OpenAI platform API (active provider cannot be OpenAI).</span>
+            </div>
+            <div class="openai-credentials">
+              <div class="field">
+                <label class="label" for="openai-key">API key</label>
+                <input id="openai-key" class="input" type="password" autocomplete="off" placeholder="sk-…" />
+              </div>
+              <div class="field">
+                <label class="label" for="openai-model">Model</label>
+                <input id="openai-model" class="input" type="text" />
+              </div>
+              <div class="field">
+                <label class="label" for="openai-base">API base URL (optional)</label>
+                <input id="openai-base" class="input" type="url" placeholder="https://api.openai.com/v1" />
+              </div>
+              <div class="field">
+                <label class="label" for="openai-org">Organization ID (optional)</label>
+                <input id="openai-org" class="input" type="text" placeholder="org-…" autocomplete="off" />
+              </div>
+              <div class="field">
+                <label class="label" for="openai-project">Project ID (optional)</label>
+                <input id="openai-project" class="input" type="text" placeholder="proj_…" autocomplete="off" />
+              </div>
+            </div>
+          </fieldset>
+
+          <fieldset class="provider-box">
+            <legend>Anthropic</legend>
+            <div class="field">
+              <label class="label" for="anthropic-key">API key</label>
+              <input id="anthropic-key" class="input" type="password" autocomplete="off" />
+            </div>
+            <div class="field">
+              <label class="label" for="anthropic-model">Model</label>
+              <input id="anthropic-model" class="input" type="text" />
+            </div>
+            <div class="field">
+              <label class="label" for="anthropic-base">Base URL (optional)</label>
+              <input id="anthropic-base" class="input" type="url" placeholder="https://api.anthropic.com/v1/messages" />
+            </div>
+          </fieldset>
+
+          <fieldset class="provider-box">
+            <legend>Azure OpenAI</legend>
+            <div class="field">
+              <label class="label" for="azure-key">API key</label>
+              <input id="azure-key" class="input" type="password" autocomplete="off" />
+            </div>
+            <div class="field">
+              <label class="label" for="azure-endpoint">Resource endpoint</label>
+              <input id="azure-endpoint" class="input" type="url" placeholder="https://your-resource.openai.azure.com" />
+            </div>
+            <div class="field">
+              <label class="label" for="azure-deployment">Deployment name</label>
+              <input id="azure-deployment" class="input" type="text" />
+            </div>
+            <div class="field">
+              <label class="label" for="azure-version">API version</label>
+              <input id="azure-version" class="input" type="text" />
+            </div>
+          </fieldset>
+
+          <fieldset class="provider-box">
+            <legend>Custom OpenAI-compatible</legend>
+            <div class="field">
+              <label class="label" for="custom-key">API key</label>
+              <input id="custom-key" class="input" type="password" autocomplete="off" />
+            </div>
+            <div class="field">
+              <label class="label" for="custom-base">Base URL (…/v1)</label>
+              <input id="custom-base" class="input" type="url" placeholder="https://host/v1" />
+            </div>
+            <div class="field">
+              <label class="label" for="custom-model">Model id</label>
+              <input id="custom-model" class="input" type="text" />
+            </div>
+          </fieldset>
+
+          <fieldset class="provider-box">
+            <legend>Developer</legend>
+            <div class="field field-check">
+              <label class="check-label">
+                <input id="debug-trace-enabled" type="checkbox" />
+                <span>Verbose debug trace</span>
+              </label>
+              <span class="field-help">
+                Logs translation and chat steps to the browser devtools console (F12) and shows the latest step above the token counter. May include short text snippets—use only in trusted environments. You can also run
+                <code>localStorage.setItem("legal-word-addin:debug-trace","1")</code> in the console.
+              </span>
+            </div>
+          </fieldset>
+
+          <div class="footer-actions">
+            <button type="button" class="btn btn-secondary" id="btn-reset">Reset to defaults</button>
+            <button type="button" class="btn btn-primary" id="btn-save">Save settings</button>
+          </div>
+          <div id="settings-status" class="status" role="status"></div>
+        </section>
+      </main>
+      <footer class="app-footer" role="contentinfo">
+        <div id="debug-trace-line" class="debug-trace-line is-hidden" role="status" aria-live="polite"></div>
+        <span id="token-usage-month" class="token-usage" aria-live="polite"></span>
+      </footer>
+    </div>
+  </body>
+</html>
